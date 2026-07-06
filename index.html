@@ -3,9 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WebXR 小型円柱テスト</title>
+
+  <title>WebXR 円柱 1/100 テスト</title>
+
   <style>
-    html, body {
+    html,
+    body {
       margin: 0;
       width: 100%;
       height: 100%;
@@ -13,6 +16,7 @@
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: #111;
     }
+
     #info {
       position: fixed;
       left: 12px;
@@ -27,6 +31,7 @@
       z-index: 10;
       pointer-events: none;
     }
+
     #statusLabel {
       position: fixed;
       left: 50%;
@@ -42,6 +47,7 @@
       pointer-events: none;
       white-space: nowrap;
     }
+
     #controls {
       position: fixed;
       left: 10px;
@@ -54,12 +60,14 @@
       z-index: 30;
       pointer-events: auto;
     }
+
     .control-row {
       display: flex;
       gap: 8px;
       justify-content: center;
       align-items: center;
     }
+
     .control-button {
       min-width: 72px;
       padding: 11px 12px;
@@ -72,37 +80,58 @@
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
       touch-action: manipulation;
     }
-    .move-button { min-width: 58px; }
+
+    .move-button {
+      min-width: 58px;
+    }
+
     #deleteModel {
       position: fixed;
-      right: 16px;
+      left: 16px;
       bottom: 24px;
       min-width: 72px;
       background: rgba(255, 80, 80, 0.95);
       color: #fff;
       z-index: 40;
     }
-    .control-button:active { transform: scale(0.96); }
+
+    #angleToggle {
+      position: fixed;
+      right: 16px;
+      bottom: 24px;
+      min-width: 92px;
+      background: rgba(255, 255, 255, 0.95);
+      color: #111;
+      z-index: 40;
+    }
+
+    .control-button:active {
+      transform: scale(0.96);
+    }
   </style>
 </head>
 
 <body>
   <div id="info">
-    WebXR 小型円柱テスト<br>
+    WebXR 円柱 1/100 テスト<br>
     地面をタップすると円柱を1個だけ配置します。<br>
-    配置後、回転・位置微調整できます。
+    実寸24m×半径7.6mを1/100で表示します。
   </div>
 
-  <div id="statusLabel">未配置</div>
+  <div id="statusLabel">
+    未配置 / 角度 5°
+  </div>
 
   <div id="controls">
     <div class="control-row">
-      <button class="control-button" id="rotateLeft">← 30°</button>
-      <button class="control-button" id="rotateRight">30° →</button>
+      <button class="control-button" id="rotateLeft">← 回転</button>
+      <button class="control-button" id="rotateRight">回転 →</button>
     </div>
+
     <div class="control-row">
       <button class="control-button move-button" id="moveForward">前</button>
     </div>
+
     <div class="control-row">
       <button class="control-button move-button" id="moveLeft">左</button>
       <button class="control-button move-button" id="moveBack">後</button>
@@ -111,6 +140,7 @@
   </div>
 
   <button class="control-button" id="deleteModel">削除</button>
+  <button class="control-button" id="angleToggle">角度 5°</button>
 
   <script type="module">
     import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
@@ -123,25 +153,37 @@
     let reticle;
     let hitTestSource = null;
     let hitTestSourceRequested = false;
+
+    // 配置できる模型は1個だけ
     let placedModel = null;
 
-    // 位置微調整量: 1cm
+    // 位置微調整量：1cm
     const moveStep = 0.01;
 
-    // 回転角度: 30度
-    const rotateStep = THREE.MathUtils.degToRad(30);
+    // 回転角度：30° / 5° / 1° を切り替え
+    const rotateStepsDeg = [30, 5, 1];
+    let rotateStepIndex = 1; // 初期値は5°
+    let rotateStep = THREE.MathUtils.degToRad(rotateStepsDeg[rotateStepIndex]);
 
     const statusLabel = document.getElementById("statusLabel");
+
     const rotateLeftButton = document.getElementById("rotateLeft");
     const rotateRightButton = document.getElementById("rotateRight");
     const deleteModelButton = document.getElementById("deleteModel");
+    const angleToggleButton = document.getElementById("angleToggle");
+
     const moveForwardButton = document.getElementById("moveForward");
     const moveBackButton = document.getElementById("moveBack");
     const moveLeftButton = document.getElementById("moveLeft");
     const moveRightButton = document.getElementById("moveRight");
 
+    // AR中にボタンを押した時、地面タップとして誤認されないようにする
     document.body.addEventListener("beforexrselect", function(event) {
-      if (event.target.closest("#controls") || event.target.closest("#deleteModel")) {
+      if (
+        event.target.closest("#controls") ||
+        event.target.closest("#deleteModel") ||
+        event.target.closest("#angleToggle")
+      ) {
         event.preventDefault();
       }
     });
@@ -151,36 +193,53 @@
       event.stopPropagation();
     }
 
-    document.querySelectorAll(".control-button").forEach(function(button) {
+    const allButtons = document.querySelectorAll(".control-button");
+    allButtons.forEach(function(button) {
       button.addEventListener("pointerdown", stopButtonEvent);
     });
 
     rotateLeftButton.addEventListener("click", function(event) {
       stopButtonEvent(event);
+
       if (!placedModel) {
         updateStatus("未配置");
         return;
       }
+
       placedModel.rotateY(-rotateStep);
-      updateStatus("左回転 30°");
+      updateStatus("左回転 " + getCurrentAngleText());
     });
 
     rotateRightButton.addEventListener("click", function(event) {
       stopButtonEvent(event);
+
       if (!placedModel) {
         updateStatus("未配置");
         return;
       }
+
       placedModel.rotateY(rotateStep);
-      updateStatus("右回転 30°");
+      updateStatus("右回転 " + getCurrentAngleText());
+    });
+
+    angleToggleButton.addEventListener("click", function(event) {
+      stopButtonEvent(event);
+
+      rotateStepIndex = (rotateStepIndex + 1) % rotateStepsDeg.length;
+      rotateStep = THREE.MathUtils.degToRad(rotateStepsDeg[rotateStepIndex]);
+
+      updateAngleButton();
+      updateStatus("角度 " + getCurrentAngleText());
     });
 
     deleteModelButton.addEventListener("click", function(event) {
       stopButtonEvent(event);
+
       if (!placedModel) {
         updateStatus("削除対象なし");
         return;
       }
+
       scene.remove(placedModel);
       placedModel = null;
       updateStatus("削除しました");
@@ -206,25 +265,36 @@
       moveModel("right");
     });
 
+    function getCurrentAngleText() {
+      return rotateStepsDeg[rotateStepIndex] + "°";
+    }
+
+    function updateAngleButton() {
+      angleToggleButton.textContent = "角度 " + getCurrentAngleText();
+    }
+
     function moveModel(direction) {
       if (!placedModel) {
         updateStatus("未配置");
         return;
       }
 
-      // translateX / translateZ は模型自身の向きを基準に移動します
+      // translateX / translateZ は、模型自身の向きを基準に移動します
       if (direction === "forward") {
         placedModel.translateZ(-moveStep);
         updateStatus("前へ 1cm");
       }
+
       if (direction === "back") {
         placedModel.translateZ(moveStep);
         updateStatus("後へ 1cm");
       }
+
       if (direction === "left") {
         placedModel.translateX(-moveStep);
         updateStatus("左へ 1cm");
       }
+
       if (direction === "right") {
         placedModel.translateX(moveStep);
         updateStatus("右へ 1cm");
@@ -232,12 +302,13 @@
     }
 
     function updateStatus(message) {
+      const base = placedModel ? "配置済み" : "未配置";
+      const angle = "角度 " + getCurrentAngleText();
+
       if (message) {
-        statusLabel.textContent = message;
-      } else if (placedModel) {
-        statusLabel.textContent = "配置済み";
+        statusLabel.textContent = message + " / " + angle;
       } else {
-        statusLabel.textContent = "未配置";
+        statusLabel.textContent = base + " / " + angle;
       }
     }
 
@@ -261,16 +332,20 @@
         antialias: true,
         alpha: true
       });
+
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
+
       document.body.appendChild(renderer.domElement);
 
       document.body.appendChild(
         ARButton.createButton(renderer, {
           requiredFeatures: ["hit-test"],
           optionalFeatures: ["dom-overlay"],
-          domOverlay: { root: document.body }
+          domOverlay: {
+            root: document.body
+          }
         })
       );
 
@@ -279,11 +354,17 @@
       scene.add(controller);
 
       const ringGeometry = new THREE.RingGeometry(0.08, 0.10, 32).rotateX(-Math.PI / 2);
-      const ringMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00ff00
+      });
+
       reticle = new THREE.Mesh(ringGeometry, ringMaterial);
       reticle.matrixAutoUpdate = false;
       reticle.visible = false;
       scene.add(reticle);
+
+      updateAngleButton();
+      updateStatus();
 
       window.addEventListener("resize", onWindowResize);
     }
@@ -299,29 +380,36 @@
         placedModel = null;
       }
 
-      const model = createSmallCylinderModel();
+      const model = createCylinderModel100();
+
       model.position.setFromMatrixPosition(reticle.matrix);
       model.quaternion.setFromRotationMatrix(reticle.matrix);
 
       scene.add(model);
       placedModel = model;
+
       updateStatus("配置しました");
     }
 
-    function createSmallCylinderModel() {
+    function createCylinderModel100() {
       const group = new THREE.Group();
 
-      // まずは数センチサイズ
-      // 半径: 5cm = 0.05m
-      // 高さ: 10cm = 0.10m
-      const radius = 0.05;
-      const height = 0.10;
+      // JPDR円柱の1/100模型
+      // 実寸: 高さ24m、半径7.6m
+      // 1/100: 高さ24cm = 0.24m、半径7.6cm = 0.076m
+      const scale = 1 / 100;
+      const realHeight = 24.0;
+      const realRadius = 7.6;
 
+      const height = realHeight * scale;
+      const radius = realRadius * scale;
+
+      // 円柱本体
       const cylinderGeometry = new THREE.CylinderGeometry(
         radius,
         radius,
         height,
-        64,
+        96,
         1,
         false
       );
@@ -329,14 +417,17 @@
       const cylinderMaterial = new THREE.MeshStandardMaterial({
         color: 0x2580ff,
         transparent: true,
-        opacity: 0.45,
+        opacity: 0.42,
         depthWrite: false
       });
 
       const cylinder = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
+
+      // CylinderGeometryは中心基準なので、底面がGL=0、上端が+24cmになるようにする
       cylinder.position.y = height / 2;
       group.add(cylinder);
 
+      // 円柱の輪郭線
       const cylinderEdges = new THREE.EdgesGeometry(cylinderGeometry);
       const cylinderLine = new THREE.LineSegments(
         cylinderEdges,
@@ -345,29 +436,68 @@
       cylinderLine.position.y = height / 2;
       group.add(cylinderLine);
 
+      // GL面の外周リング
       const groundRingGeometry = new THREE.RingGeometry(
         radius - 0.004,
         radius + 0.004,
-        64
+        96
       ).rotateX(-Math.PI / 2);
+
       const groundRingMaterial = new THREE.MeshBasicMaterial({
         color: 0xffaa00,
         side: THREE.DoubleSide
       });
+
       const groundRing = new THREE.Mesh(groundRingGeometry, groundRingMaterial);
       groundRing.position.y = 0.002;
       group.add(groundRing);
 
-      const centerCross = createCrossMarker(0.06, 0.006, 0xff3333);
+      // 中心十字マーカー
+      const centerCross = createCrossMarker(0.08, 0.006, 0xff3333);
       centerCross.position.y = 0.004;
       group.add(centerCross);
 
       return group;
     }
 
+    function createRectangleFrame(width, depth, color) {
+      const group = new THREE.Group();
+
+      const barThickness = 0.006;
+      const barHeight = 0.006;
+
+      const material = new THREE.MeshBasicMaterial({
+        color: color
+      });
+
+      const longBarGeometry = new THREE.BoxGeometry(width, barHeight, barThickness);
+      const shortBarGeometry = new THREE.BoxGeometry(barThickness, barHeight, depth);
+
+      const front = new THREE.Mesh(longBarGeometry, material);
+      front.position.z = -depth / 2;
+      group.add(front);
+
+      const back = new THREE.Mesh(longBarGeometry, material);
+      back.position.z = depth / 2;
+      group.add(back);
+
+      const left = new THREE.Mesh(shortBarGeometry, material);
+      left.position.x = -width / 2;
+      group.add(left);
+
+      const right = new THREE.Mesh(shortBarGeometry, material);
+      right.position.x = width / 2;
+      group.add(right);
+
+      return group;
+    }
+
     function createCrossMarker(length, thickness, color) {
       const group = new THREE.Group();
-      const material = new THREE.MeshBasicMaterial({ color: color });
+
+      const material = new THREE.MeshBasicMaterial({
+        color: color
+      });
 
       const xBar = new THREE.Mesh(
         new THREE.BoxGeometry(length, thickness, thickness),
@@ -387,6 +517,7 @@
     function onWindowResize() {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
+
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
