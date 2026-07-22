@@ -1,10 +1,11 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>WebXR 半カプセル 1/100 テスト</title>
+  <title>WebXR 半カプセル 実寸テスト</title>
 
   <style>
     html,
@@ -113,9 +114,10 @@
 
 <body>
   <div id="info">
-    WebXR 半カプセル 1/100 テスト<br>
+    WebXR 半カプセル 実寸テスト<br>
     地面をタップすると模型を1個だけ配置します。<br>
-    全高24m、上部7.6mが半球の形状を1/100で表示します。</div>
+    全高24m、半径7.6m、上部7.6mが半球の実寸表示です。
+  </div>
 
   <div id="statusLabel">
     未配置 / 角度 5°
@@ -156,8 +158,8 @@
     // 配置できる模型は1個だけ
     let placedModel = null;
 
-    // 位置微調整量：1cm
-    const moveStep = 0.01;
+    // 位置微調整量：10cm
+    const moveStep = 0.10;
 
     // 回転角度：30° / 5° / 1° を切り替え
     const rotateStepsDeg = [30, 5, 1];
@@ -281,22 +283,22 @@
       // translateX / translateZ は、模型自身の向きを基準に移動します
       if (direction === "forward") {
         placedModel.translateZ(-moveStep);
-        updateStatus("前へ 1cm");
+        updateStatus("前へ 10cm");
       }
 
       if (direction === "back") {
         placedModel.translateZ(moveStep);
-        updateStatus("後へ 1cm");
+        updateStatus("後へ 10cm");
       }
 
       if (direction === "left") {
         placedModel.translateX(-moveStep);
-        updateStatus("左へ 1cm");
+        updateStatus("左へ 10cm");
       }
 
       if (direction === "right") {
         placedModel.translateX(moveStep);
-        updateStatus("右へ 1cm");
+        updateStatus("右へ 10cm");
       }
     }
 
@@ -321,7 +323,7 @@
         70,
         window.innerWidth / window.innerHeight,
         0.01,
-        20
+        200
       );
 
       const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 2);
@@ -379,7 +381,7 @@
         placedModel = null;
       }
 
-      const model = createHalfCapsuleModel100();
+      const model = createHalfCapsuleFullScaleModel();
 
       model.position.setFromMatrixPosition(reticle.matrix);
       model.quaternion.setFromRotationMatrix(reticle.matrix);
@@ -390,44 +392,35 @@
       updateStatus("配置しました");
     }
 
-    function createHalfCapsuleModel100() {
+    function createHalfCapsuleFullScaleModel() {
       const group = new THREE.Group();
 
-      // JPDR簡易形状の1/100模型
-      // 実寸:
-      //   全高: 24.0m
-      //   半径: 7.6m
-      //   上部半球高さ: 7.6m
-      //   円筒部高さ: 24.0m - 7.6m = 16.4m
-      //
-      // 1/100:
-      //   全高: 24cm = 0.24m
-      //   半径: 7.6cm = 0.076m
-      //   円筒部高さ: 16.4cm = 0.164m
-      const scale = 1 / 100;
-      const realTotalHeight = 24.0;
-      const realRadius = 7.6;
-
-      const radius = realRadius * scale;
-      const totalHeight = realTotalHeight * scale;
+      // 実寸モデル
+      // 全高: 24.0m
+      // 半径: 7.6m
+      // 上部半球高さ: 7.6m
+      // 円筒部高さ: 24.0m - 7.6m = 16.4m
+      const totalHeight = 24.0;
+      const radius = 7.6;
       const cylinderHeight = totalHeight - radius;
-
-      // 円筒部: GL=0 から +16.4cm
-      const cylinderGeometry = new THREE.CylinderGeometry(
-        radius,
-        radius,
-        cylinderHeight,
-        96,
-        1,
-        false
-      );
 
       const bodyMaterial = new THREE.MeshStandardMaterial({
         color: 0x2580ff,
         transparent: true,
-        opacity: 0.42,
-        depthWrite: false
+        opacity: 0.35,
+        depthWrite: false,
+        side: THREE.DoubleSide
       });
+
+      // 円筒部: GL=0 から +16.4m
+      const cylinderGeometry = new THREE.CylinderGeometry(
+        radius,
+        radius,
+        cylinderHeight,
+        128,
+        1,
+        false
+      );
 
       const cylinder = new THREE.Mesh(cylinderGeometry, bodyMaterial);
       cylinder.position.y = cylinderHeight / 2;
@@ -441,12 +434,12 @@
       cylinderLine.position.y = cylinderHeight / 2;
       group.add(cylinderLine);
 
-      // 上部半球: 中心を円筒部上端に置き、上半分だけを表示
-      // SphereGeometryのthetaLengthをPI/2にして上半球を作る
+      // 上部半球: 半球中心を円筒部上端に置く
+      // SphereGeometryのthetaLengthをPI/2にして上半球だけを作る
       const hemisphereGeometry = new THREE.SphereGeometry(
         radius,
-        96,
-        32,
+        128,
+        48,
         0,
         Math.PI * 2,
         0,
@@ -467,9 +460,9 @@
 
       // GL面の外周リング
       const groundRingGeometry = new THREE.RingGeometry(
-        radius - 0.004,
-        radius + 0.004,
-        96
+        radius - 0.08,
+        radius + 0.08,
+        128
       ).rotateX(-Math.PI / 2);
 
       const groundRingMaterial = new THREE.MeshBasicMaterial({
@@ -478,14 +471,14 @@
       });
 
       const groundRing = new THREE.Mesh(groundRingGeometry, groundRingMaterial);
-      groundRing.position.y = 0.002;
+      groundRing.position.y = 0.02;
       group.add(groundRing);
 
       // 円筒部と半球の境界リング
       const shoulderRingGeometry = new THREE.RingGeometry(
-        radius - 0.003,
-        radius + 0.003,
-        96
+        radius - 0.06,
+        radius + 0.06,
+        128
       ).rotateX(-Math.PI / 2);
 
       const shoulderRingMaterial = new THREE.MeshBasicMaterial({
@@ -497,9 +490,9 @@
       shoulderRing.position.y = cylinderHeight;
       group.add(shoulderRing);
 
-      // 中心十字マーカー
-      const centerCross = createCrossMarker(0.08, 0.006, 0xff3333);
-      centerCross.position.y = 0.004;
+      // 配置中心十字マーカー
+      const centerCross = createCrossMarker(1.2, 0.08, 0xff3333);
+      centerCross.position.y = 0.04;
       group.add(centerCross);
 
       return group;
