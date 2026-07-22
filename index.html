@@ -105,6 +105,16 @@
       z-index: 40;
     }
 
+    #moveStepToggle {
+      position: fixed;
+      right: 16px;
+      bottom: 78px;
+      min-width: 92px;
+      background: rgba(255, 255, 255, 0.95);
+      color: #111;
+      z-index: 40;
+    }
+
     .control-button:active {
       transform: scale(0.96);
     }
@@ -115,7 +125,7 @@
   <div id="info">
     WebXR 半カプセル 実寸テスト<br>
     地面をタップすると模型を1個だけ配置します。<br>
-    全高24m、半径7.6m、上部7.6mが半球の実寸表示です。
+    実寸表示です。移動量と回転角度を右下ボタンで切替できます。
   </div>
 
   <div id="statusLabel">
@@ -140,6 +150,7 @@
   </div>
 
   <button class="control-button" id="deleteModel">削除</button>
+  <button class="control-button" id="moveStepToggle">移動 10cm</button>
   <button class="control-button" id="angleToggle">角度 5°</button>
 
   <script type="module">
@@ -157,8 +168,15 @@
     // 配置できる模型は1個だけ
     let placedModel = null;
 
-    // 位置微調整量：10cm
-    const moveStep = 0.10;
+    // 移動量：10cm / 1m / 5m を切り替え
+    const moveSteps = [
+      { label: "10cm", value: 0.10 },
+      { label: "1m", value: 1.00 },
+      { label: "5m", value: 5.00 }
+    ];
+
+    let moveStepIndex = 0; // 初期値は10cm
+    let moveStep = moveSteps[moveStepIndex].value;
 
     // 回転角度：30° / 5° / 1° を切り替え
     const rotateStepsDeg = [30, 5, 1];
@@ -171,6 +189,7 @@
     const rotateRightButton = document.getElementById("rotateRight");
     const deleteModelButton = document.getElementById("deleteModel");
     const angleToggleButton = document.getElementById("angleToggle");
+    const moveStepToggleButton = document.getElementById("moveStepToggle");
 
     const moveForwardButton = document.getElementById("moveForward");
     const moveBackButton = document.getElementById("moveBack");
@@ -182,7 +201,8 @@
       if (
         event.target.closest("#controls") ||
         event.target.closest("#deleteModel") ||
-        event.target.closest("#angleToggle")
+        event.target.closest("#angleToggle") ||
+        event.target.closest("#moveStepToggle")
       ) {
         event.preventDefault();
       }
@@ -232,6 +252,16 @@
       updateStatus("角度 " + getCurrentAngleText());
     });
 
+    moveStepToggleButton.addEventListener("click", function(event) {
+      stopButtonEvent(event);
+
+      moveStepIndex = (moveStepIndex + 1) % moveSteps.length;
+      moveStep = moveSteps[moveStepIndex].value;
+
+      updateMoveStepButton();
+      updateStatus("移動 " + getCurrentMoveStepText());
+    });
+
     deleteModelButton.addEventListener("click", function(event) {
       stopButtonEvent(event);
 
@@ -273,6 +303,14 @@
       angleToggleButton.textContent = "角度 " + getCurrentAngleText();
     }
 
+    function getCurrentMoveStepText() {
+      return moveSteps[moveStepIndex].label;
+    }
+
+    function updateMoveStepButton() {
+      moveStepToggleButton.textContent = "移動 " + getCurrentMoveStepText();
+    }
+
     function moveModel(direction) {
       if (!placedModel) {
         updateStatus("未配置");
@@ -282,33 +320,34 @@
       // translateX / translateZ は、模型自身の向きを基準に移動します
       if (direction === "forward") {
         placedModel.translateZ(-moveStep);
-        updateStatus("前へ 10cm");
+        updateStatus("前へ " + getCurrentMoveStepText());
       }
 
       if (direction === "back") {
         placedModel.translateZ(moveStep);
-        updateStatus("後へ 10cm");
+        updateStatus("後へ " + getCurrentMoveStepText());
       }
 
       if (direction === "left") {
         placedModel.translateX(-moveStep);
-        updateStatus("左へ 10cm");
+        updateStatus("左へ " + getCurrentMoveStepText());
       }
 
       if (direction === "right") {
         placedModel.translateX(moveStep);
-        updateStatus("右へ 10cm");
+        updateStatus("右へ " + getCurrentMoveStepText());
       }
     }
 
     function updateStatus(message) {
       const base = placedModel ? "配置済み" : "未配置";
       const angle = "角度 " + getCurrentAngleText();
+      const move = "移動 " + getCurrentMoveStepText();
 
       if (message) {
-        statusLabel.textContent = message + " / " + angle;
+        statusLabel.textContent = message + " / " + angle + " / " + move;
       } else {
-        statusLabel.textContent = base + " / " + angle;
+        statusLabel.textContent = base + " / " + angle + " / " + move;
       }
     }
 
@@ -364,6 +403,7 @@
       scene.add(reticle);
 
       updateAngleButton();
+      updateMoveStepButton();
       updateStatus();
 
       window.addEventListener("resize", onWindowResize);
@@ -434,7 +474,6 @@
       group.add(cylinderLine);
 
       // 上部半球: 半球中心を円筒部上端に置く
-      // SphereGeometryのthetaLengthをPI/2にして上半球だけを作る
       const hemisphereGeometry = new THREE.SphereGeometry(
         radius,
         128,
